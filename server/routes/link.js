@@ -2,8 +2,10 @@ import express from 'express';
 
 const router = express.Router();
 
-import { getLinks } from '../controllers/link.js';
+import { getKnownLinks, getLinks, purgeModel } from '../controllers/link.js';
 
-router.get('/', getLinks);
+router.get('/link', getLinks);
+router.get('/', getKnownLinks)
+router.get('/purge', purgeModel)
 
 export default router;

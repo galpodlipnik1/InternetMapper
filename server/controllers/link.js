@@ -1,48 +1,50 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import { formatLinks, removeDuplicates } from '../utils/links.js';
-import https from 'https';
+import { changeLinks, crawlLinks } from '../utils/links.js';
+import Link from '../model/link.js';
 
-export const getLinks = async (_, res) => {
-  const baseUrl = "https://cheerio.js.org/"
+export const getLinks = async (req, res) => {
+  const baseUrl = `https://${req.query.url}`;
+  const crawlDepth = req.query.depth;
+
   try {
-    let links = await crawlLinks(baseUrl, baseUrl, 3, new Map());
-    links = removeDuplicates(links);
-    res.status(200).json({ status: 200, links: links });
-  } catch (error) {
-    console.log(error);
-    res.status(404).json({ status: 404, message: error.message });
-  }
-};
-
-const crawlLinks = async (url, baseUrl, depth, visited) => {
-  if (visited.has(url) || depth === 0) {
-    return [];
-  }
-
-  visited.set(url, true);
-
-  let response;
-  try {
-    response = await axios.get(url, {
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: false
-      })
-    });
-    if (response.status !== 200) {
-      return [];
+    let links = await crawlLinks(baseUrl, baseUrl, crawlDepth, new Map(), baseUrl);
+    links = changeLinks(links, baseUrl);
+    links = links.flat(Infinity);
+    const linkLength = links.length;
+    for (let link of links) {
+      const existingLink = await Link.findOne({ url: link.url });
+      if (!existingLink) {
+        const newLink = new Link({
+          url: link.url,
+          links: link.links,
+          parent: link.parent,
+          crawlTime: new Date(),
+          crawlDepth: link.crawlDepth
+        });
+        await newLink.save();
+      }
     }
+
+    res.status(200).json({ message: `${linkLength} links crawled` });
   } catch (error) {
-    return [];
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
-
-  const html = response.data;
-  const $ = cheerio.load(html);
-  const links = $('a').map((_, element) => $(element).attr('href')).get();
-
-  const formattedLinks = formatLinks(links, baseUrl);
-
-  const childLinks = await Promise.all(formattedLinks.map(link => crawlLinks(link, baseUrl, depth - 1, visited)));
-  
-  return [url, ...childLinks.flatMap(x => x)];
 };
+
+export const getKnownLinks = async (_, res) => {
+  try {
+    const links = await Link.find({});
+    res.status(200).json({ links });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const purgeModel = async (req, res) => {
+  try {
+    await Link.deleteMany({});
+    res.status(200).json({ status: 200, message: 'Links purged' });
+  } catch (error) {
+    res.status(500).json({ status: 500, message: error.message });
+  }
+}
