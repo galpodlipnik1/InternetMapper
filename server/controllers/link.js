@@ -12,23 +12,14 @@ export const getLinks = async (req, res) => {
     links = links.flat(Infinity);
     const linkLength = links.length;
     for (let link of links) {
-      const existingLink = await Link.findOne({ url: link.url });
-      if (!existingLink) {
-        const newLink = new Link({
-          url: link.url,
-          links: link.links,
-          parent: link.parent,
-          crawlTime: new Date(),
-          crawlDepth: link.crawlDepth
-        });
-        await newLink.save();
-      } else {
-        existingLink.links = link.links;
-        existingLink.parent = link.parent;
-        existingLink.crawlTime = new Date();
-        existingLink.crawlDepth = link.crawlDepth;
-        await existingLink.save();
-      }
+      const update = {
+        url: link.url,
+        links: link.links,
+        parent: link.parent,
+        crawlTime: new Date(),
+        crawlDepth: link.crawlDepth
+      };
+      await Link.findOneAndUpdate({ url: link.url }, update, { upsert: true });
     }
 
     console.log(`${linkLength} links crawled from ${baseUrl}`);

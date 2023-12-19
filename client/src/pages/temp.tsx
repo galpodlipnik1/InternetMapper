@@ -23,6 +23,9 @@ const Home: FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedLink, setSelectedLink] = useState<{ url: string; parent: string } | null>(null);
   const [addLink, setAddLink] = useState<{ url: string; depth: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [highlightedSphere, setHighlightedSphere] = useState<THREE.Mesh | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const spheresRef = useRef<THREE.Mesh[]>([]);
   const raycaster = new THREE.Raycaster();
@@ -61,33 +64,42 @@ const Home: FC = () => {
       knownMap.forEach((parentLink) => {
         parentLink.links.forEach((link) => {
           const geometry = new THREE.SphereGeometry(link.size, 32, 32);
-          const material = new THREE.MeshBasicMaterial({ color: link.color });
+          const material = new THREE.MeshBasicMaterial({
+            color: link.url === searchQuery ? 0xffff00 : link.color
+          });
           const linkSphere = new THREE.Mesh(geometry, material);
 
-          let position: THREE.Vector3;
+          // Initialize position with a default value
+          let position: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
           let isOverlapping: boolean;
           let attempts = 0;
-          const maxAttempts = 100;
-          do {
-            if (link.depth === 1) {
-              position = new THREE.Vector3(
-                Math.random() * 100 - 50 + link.size,
-                Math.random() * 100 - 50 + link.size,
-                Math.random() * 100 - 50 + link.size
-              );
-            } else {
-              const parentSphere = spheresByUrl.get(link.parent);
-              if (!parentSphere) {
-                console.warn(`Parent sphere for link ${link.url} not found. Skipping...`);
-                return;
-              }
-              const offset = new THREE.Vector3(
-                (Math.random() - 0.5) * 15,
-                -5,
-                (Math.random() - 0.5) * 15
-              );
-              position = new THREE.Vector3().addVectors(parentSphere.position, offset);
+          const maxAttempts = 100; // Maximum number of attempts to position a sphere
+
+          // If the link has a parent, adjust its position based on the parent's position
+          if (link.parent) {
+            const parentUrls = link.parent.split(','); // Assuming parents are comma-separated
+            const parentSpheres = parentUrls
+              .map((url) => spheresByUrl.get(url))
+              .filter(Boolean) as THREE.Mesh[];
+            if (parentSpheres.length > 0) {
+              position = parentSpheres
+                .reduce((sum, parentSphere) => {
+                  sum.add(parentSphere.position);
+                  return sum;
+                }, new THREE.Vector3())
+                .divideScalar(parentSpheres.length);
             }
+          }
+
+          do {
+            // Randomize position around the average parent position
+            position.add(
+              new THREE.Vector3(
+                Math.random() * 20 - 10, // randomize x-coordinate around the average parent position
+                Math.random() * 20 - 10, // randomize y-coordinate around the average parent position
+                Math.random() * 20 - 10 // randomize z-coordinate around the average parent position
+              )
+            );
 
             isOverlapping = Array.from(spheresByUrl.values()).some((existingSphere) => {
               const distance = existingSphere.position.distanceTo(position);
@@ -114,6 +126,11 @@ const Home: FC = () => {
           scene.add(linkSphere);
 
           spheresByUrl.set(link.url, linkSphere);
+
+          if (link.url === searchQuery) {
+            setHighlightedSphere(linkSphere);
+            camera.lookAt(linkSphere.position);
+          }
         });
       });
 
@@ -123,27 +140,17 @@ const Home: FC = () => {
             const parentSphere = spheresByUrl.get(link.parent);
             const linkSphere = spheresByUrl.get(link.url);
             if (parentSphere && linkSphere) {
-              const material = new THREE.MeshBasicMaterial({
+              const material = new THREE.LineBasicMaterial({
                 color: link.color,
+                linewidth: link.lineWidth
               });
-
-              const direction = new THREE.Vector3().subVectors(linkSphere.position, parentSphere.position);
-              const orientation = new THREE.Matrix4();
-              orientation.lookAt(parentSphere.position, linkSphere.position, new THREE.Object3D().up);
-              orientation.multiply(new THREE.Matrix4().set(
-                1, 0, 0, 0,
-                0, 0, 1, 0,
-                0, -1, 0, 0,
-                0, 0, 0, 1
-              ));
-
-              const edgeGeometry = new THREE.CylinderGeometry(link.lineWidth, link.lineWidth, direction.length(), 8, 1);
-              edgeGeometry.applyMatrix4(orientation);
-
-              const position = new THREE.Vector3().addVectors(parentSphere.position, linkSphere.position).divideScalar(2);
-              const edge = new THREE.Mesh(edgeGeometry, material);
-              edge.position.set(position.x, position.y, position.z);
-              scene.add(edge);
+              const geometry = new THREE.BufferGeometry().setFromPoints([
+                parentSphere.position,
+                linkSphere.position
+              ]);
+              const line = new THREE.Line(geometry, material);
+              line.computeLineDistances();
+              scene.add(line);
             }
           }
         });
@@ -164,6 +171,7 @@ const Home: FC = () => {
 
         raycaster.setFromCamera(mouse, camera);
 
+        // Assuming spheresRef.current is an array of all objects in the scene
         const spheres = spheresRef.current.filter((object) => object instanceof THREE.Mesh);
 
         const intersects = raycaster.intersectObjects(spheres, true);
@@ -182,9 +190,12 @@ const Home: FC = () => {
         while (containerRef.current?.firstChild) {
           containerRef.current.removeChild(containerRef.current.firstChild);
         }
+        if (highlightedSphere && highlightedSphere.material instanceof THREE.MeshBasicMaterial) {
+          highlightedSphere.material.color.set(0xffffff);
+        }
       };
     }
-  }, [isLoading, knownMap]);
+  }, [isLoading, knownMap, searchQuery]);
 
   return isLoading ? (
     <div>Loading...</div>
@@ -227,6 +238,20 @@ const Home: FC = () => {
           type="button"
         >
           Add
+        </button>
+        <input
+          className="border-2 border-gray-300 bg-white h-10 px-5 pr-16 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+          type="text"
+          name="search"
+          placeholder="Search a website(e.g. google.com)"
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+        <button
+          onClick={() => setSearchQuery(searchInput)}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200 ease-in-out transform hover:-translate-y-1 hover:scale-110"
+          type="button"
+        >
+          Search
         </button>
       </div>
       <div ref={containerRef}>

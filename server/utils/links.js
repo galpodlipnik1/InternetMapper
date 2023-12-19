@@ -141,5 +141,5 @@ const getSize = (depth) => {
 }
 
 const getLineWidth = (depth) => {
-  return 3 / Math.pow(2, depth);
+  return 0.2 / Math.pow(2, depth);
 }
