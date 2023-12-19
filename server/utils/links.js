@@ -69,6 +69,7 @@ export const formatLinks = (links, baseUrl) => {
 }
 
 export const changeLinks = (linksArr, baseUrl) => {
+  const seen = []; // Declare seen outside of the map function
   const changed = linksArr.map(linkObj => {
     const links = linkObj.links;
     const url = linkObj.url;
@@ -76,7 +77,14 @@ export const changeLinks = (linksArr, baseUrl) => {
       return linkObj;
     }
     const filteredLinks = links.map(link => link.replace(/^www\./, '')).filter(link => !(link.includes(baseUrl) || (link.includes(url) && url !== baseUrl)));
-    return {...linkObj, links: filteredLinks};
+    const uniqueLinks = filteredLinks.filter(link => {
+      if (seen.includes(link)) {
+        return false;
+      }
+      seen.push(link);
+      return true;
+    });
+    return {...linkObj, links: uniqueLinks};
   });
 
   return changed;
