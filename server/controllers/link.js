@@ -1,5 +1,6 @@
-import { changeLinks, crawlLinks } from '../utils/links.js';
+import { changeLinks, crawlLinks, formatResponse } from '../utils/links.js';
 import Link from '../model/link.js';
+import axios from 'axios';
 
 export const getLinks = async (req, res) => {
   const baseUrl = `https://${req.query.url}`;
@@ -34,7 +35,8 @@ export const getLinks = async (req, res) => {
 export const getKnownLinks = async (_, res) => {
   try {
     const links = await Link.find({});
-    res.status(200).json({ links });
+
+    res.status(200).json({ map: formatResponse(links) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -48,3 +50,51 @@ export const purgeModel = async (req, res) => {
     res.status(500).json({ status: 500, message: error.message });
   }
 }
+
+export const test = async (req, res) => {
+  const randomWebsites = [
+    'google.com',
+    'youtube.com',
+    'facebook.com',
+    'wikipedia.org',
+    'reddit.com',
+    'yahoo.com',
+    'amazon.com',
+    'twitter.com',
+    'live.com',
+    'instagram.com',
+    'linkedin.com',
+    'netflix.com',
+    'wordpress.com',
+    'ebay.com',
+    'apple.com',
+    'imgur.com',
+    'microsoft.com',
+    'pinterest.com',
+    'paypal.com',
+    'espn.com',
+    'tumblr.com',
+    'bing.com',
+    'office.com',
+    'github.com',
+    'stackoverflow.com',
+    'quora.com',
+    'adobe.com',
+    'whatsapp.com',
+    'blogger.com',
+    'spotify.com',
+    'yelp.com',
+  ]
+
+  try {
+    randomWebsites.forEach(async (website) => {
+      const add = await axios.get(`http://localhost:5001/links/link/?url=${website}/&depth=3`);
+      console.log(add.data.message + ' for ' + website);
+    });
+
+    res.status(200).json({ message: 'WORKING...' });
+    console.log('DONE');
+  } catch (error) {
+    console.log(error);
+  }
+};

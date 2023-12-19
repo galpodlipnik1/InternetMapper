@@ -1,188 +1,190 @@
-import { useEffect, useRef, FC } from 'react';
+import { useEffect, useRef, useState, FC } from 'react';
 import { getLinks } from '../actions/links';
 import * as THREE from 'three';
-import { MeshLine, MeshLineMaterial } from 'three.meshline';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+type LinkType = {
+  url: string;
+  depth: number;
+  color: number;
+  size: number;
+  lineWidth: number;
+  links: string[];
+  parent: string;
+};
+
+type KnownMapType = {
+  parent: string;
+  links: LinkType[];
+}[];
+
 const Home: FC = () => {
-  const mountRef = useRef<HTMLDivElement | null>(null);
-  let clickableObjects: THREE.Object3D[] = [];
+  const [knownMap, setKnownMap] = useState<KnownMapType>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedLink, setSelectedLink] = useState<{url:string, parent:string} | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const spheresRef = useRef<THREE.Mesh[]>([]);
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
 
   useEffect(() => {
-    if (!mountRef.current) return;
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    const renderer = new THREE.WebGLRenderer();
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-
-    while (mountRef.current.firstChild) {
-      mountRef.current.removeChild(mountRef.current.firstChild);
-    }
-    mountRef.current.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    function onMouseClick(event: MouseEvent) {
-      event.preventDefault();
-
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      const intersects = raycaster.intersectObjects(clickableObjects);
-
-      if (intersects.length > 0) {
-        const firstIntersection = intersects[0];
-        const clickedObject = firstIntersection.object;
-
-        if (clickedObject.userData && clickedObject.userData.url) {
-          alert(`Clicked on: ${clickedObject.userData.url}`);
-        }
-      }
-    }
-
-    window.addEventListener('click', onMouseClick);
-
     const getLinksData = async () => {
-      const links: any[] = await getLinks();
-      console.log(links);
+      const links = await getLinks();
+      setKnownMap(links);
+      setIsLoading(false);
+    };
 
-      const urlToSphere: Record<string, THREE.Mesh> = {};
+    getLinksData();
+  }, []);
 
-      links.forEach((link: any, index: number) => {
-        let sphere: THREE.Mesh;
+  useEffect(() => {
+    if (!isLoading && containerRef.current) {
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      camera.position.z = 20;
 
-        if (urlToSphere[link.url]) {
-          sphere = urlToSphere[link.url];
-          if (
-            'color' in sphere.material &&
-            (sphere.material as THREE.MeshBasicMaterial).color.getHex() !== 0x00ff00
-          ) {
-            (sphere.material as THREE.MeshBasicMaterial).color.setHex(0x0000ff);
-          }
-        } else {
-          const geometry = new THREE.SphereGeometry(3, 64, 64); // Green spheres with radius 1
-          const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-          sphere = new THREE.Mesh(geometry, material);
+      const renderer = new THREE.WebGLRenderer();
 
-          sphere.position.x = 0;
-          sphere.position.y = 0; // Adjust the y position here
-          sphere.position.z = 100 - index * 5; // Adjust the z position here
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      containerRef.current.appendChild(renderer.domElement);
 
-          sphere.userData = { url: link.url, radius: geometry.parameters.radius };
+      const controls = new OrbitControls(camera, renderer.domElement);
 
-          scene.add(sphere);
-          clickableObjects.push(sphere);
-          urlToSphere[link.url] = sphere;
-        }
+      const spheresByUrl = new Map<string, THREE.Mesh>();
 
-        const addedLinks: string[] = [];
+      knownMap.forEach((parentLink) => {
+        parentLink.links.forEach((link) => {
+          const geometry = new THREE.SphereGeometry(link.size, 32, 32);
+          const material = new THREE.MeshBasicMaterial({ color: link.color });
+          const linkSphere = new THREE.Mesh(geometry, material);
 
-        link.links.forEach((subLink: any) => {
-          if (addedLinks.includes(subLink) || subLink === link.url) return;
-        
-          let subSphere: THREE.Mesh;
-        
-          if (urlToSphere[subLink]) {
-            subSphere = urlToSphere[subLink];
-            if ('color' in subSphere.material && (subSphere.material as THREE.MeshBasicMaterial).color.getHex() === 0xff0000) {
-              subSphere.geometry = new THREE.SphereGeometry(0.5, 64, 64); // Red spheres with radius 0.5
-            } else if ('color' in subSphere.material && (subSphere.material as THREE.MeshBasicMaterial).color.getHex() === 0x0000ff) {
-              subSphere.geometry = new THREE.SphereGeometry(5, 64, 64); // Blue spheres with radius 1
+          let position: THREE.Vector3;
+          let isOverlapping: boolean;
+          let attempts = 0;
+          const maxAttempts = 100; // Maximum number of attempts to position a sphere
+          do {
+            position = new THREE.Vector3(
+              (link.depth === 1 ? Math.random() * 100 - 50 : Math.random() * 20 - 10) + link.size, // spread out main parents
+              (link.depth === 1 ? Math.random() * 100 - 50 : -link.depth) + link.size, // randomize y-coordinate for main parents
+              (link.depth === 1 ? Math.random() * 100 - 50 : Math.random() * 20 - 10) + link.size  // spread out main parents
+            );
+
+            // If the link has a parent, adjust its position based on the parent's position
+            if (link.parent) {
+              const parentSphere = spheresByUrl.get(link.parent);
+              if (parentSphere) {
+                position.x += parentSphere.position.x;
+                position.y += parentSphere.position.y;
+                position.z += parentSphere.position.z;
+              }
             }
-          } else {
-            const subGeometry = new THREE.SphereGeometry(1, 64, 64); // Default to red spheres with radius 0.5
-            const subMaterial = new THREE.MeshBasicMaterial({color: 0xff0000}); 
-            subSphere = new THREE.Mesh(subGeometry, subMaterial);
 
-            let collision = false;
-            do {
-              subSphere.position.x = sphere.position.x + (Math.random() - 0.5) * 200; // Increase the random range here
-              subSphere.position.y = sphere.position.y + (Math.random() - 0.5) * 200; // Increase the random range here
-              subSphere.position.z = sphere.position.z - 5; // Increase the z position difference here
+            isOverlapping = Array.from(spheresByUrl.values()).some((existingSphere) => {
+              const distance = existingSphere.position.distanceTo(position);
+              
+              const sphereGeometry = existingSphere.geometry as THREE.SphereGeometry;
+              
+              return distance < (sphereGeometry.parameters.radius + link.size);
+            });
 
-              collision = scene.children.some((child) => {
-                if (child === sphere || child === subSphere) return false;
+            attempts++;
+          } while (isOverlapping && attempts < maxAttempts);
 
-                const distance = (child as THREE.Mesh).position.distanceTo(subSphere.position);
-                return distance < (child.userData.radius as number) + subGeometry.parameters.radius;
+          if (attempts === maxAttempts) {
+            console.warn('Could not position a sphere without overlapping after maximum attempts. Skipping...');
+            return;
+          }
+
+          linkSphere.position.copy(position);
+
+          linkSphere.userData = { url: link.url, parent: link.parent };
+          spheresRef.current.push(linkSphere);
+          scene.add(linkSphere);
+
+          spheresByUrl.set(link.url, linkSphere);
+
+          if (link.parent) {
+            const parentSphere = spheresByUrl.get(link.parent);
+            if (parentSphere) {
+              const material = new THREE.LineBasicMaterial({
+                color: link.color,
+                linewidth: link.lineWidth,
               });
-            } while (collision);
-
-            subSphere.userData = { url: subLink, radius: subGeometry.parameters.radius };
-
-            scene.add(subSphere);
-            clickableObjects.push(subSphere);
-            urlToSphere[subLink] = subSphere;
+              const geometry = new THREE.BufferGeometry().setFromPoints([
+                parentSphere.position,
+                linkSphere.position
+              ]);
+              const line = new THREE.Line(geometry, material);
+              line.computeLineDistances();
+              scene.add(line);
+            }
           }
-
-          const points = [];
-          points.push(new THREE.Vector3(sphere.position.x, sphere.position.y, sphere.position.z));
-          points.push(
-            new THREE.Vector3(subSphere.position.x, subSphere.position.y, subSphere.position.z)
-          );
-
-          const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-          const meshLine = new MeshLine();
-          meshLine.setGeometry(lineGeometry);
-
-          let lineWidth = 0.2;
-
-          if (
-            'color' in sphere.material &&
-            (sphere.material as THREE.MeshBasicMaterial).color.getHex() === 0x0000ff
-          ) {
-            lineWidth = 0.1;
-          }
-
-          const material = new MeshLineMaterial({
-            color: new THREE.Color(0xffffff),
-            lineWidth: lineWidth,
-            resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
-          });
-
-          const line = new THREE.Mesh(meshLine.geometry, material);
-          scene.add(line);
-
-          addedLinks.push(subLink);
         });
       });
-
-      camera.position.z = 150;
 
       const animate = function () {
         requestAnimationFrame(animate);
         controls.update();
         renderer.render(scene, camera);
       };
-
       animate();
-    };
 
-    getLinksData();
+      containerRef.current.addEventListener('mousemove', (event) => {
+        event.preventDefault();
 
-    return () => {
-      if (mountRef.current) {
-        while (mountRef.current.firstChild) {
-          mountRef.current.removeChild(mountRef.current.firstChild);
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        // Assuming spheresRef.current is an array of all objects in the scene
+        const spheres = spheresRef.current.filter(object => object instanceof THREE.Mesh);
+
+        const intersects = raycaster.intersectObjects(spheres, true);
+
+        if (intersects.length > 0) {
+          const firstIntersect = intersects[0];
+          const url = firstIntersect.object.userData.url;
+          const parent = firstIntersect.object.userData.parent;
+          setSelectedLink({ url, parent });
+        } else {
+          setSelectedLink(null);
         }
-      }
-      window.removeEventListener('click', onMouseClick);
-    };
-  }, []);
+      });
 
-  return <div ref={mountRef} />;
+      return () => {
+        while (containerRef.current?.firstChild) {
+          containerRef.current.removeChild(containerRef.current.firstChild);
+        }
+      };
+    }
+  }, [isLoading, knownMap]);
+
+  return isLoading ? (
+    <div>Loading...</div>
+  ) : (
+    <div ref={containerRef}>
+      {selectedLink && (
+        <div className="fixed top-2 right-2 bg-white p-6 rounded-lg shadow-xl">
+          <button 
+            onClick={() => setSelectedLink(null)} 
+            className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+          >
+            X
+          </button>
+          <h2 className="text-2xl font-semibold text-gray-700 mb-2">URL</h2>
+          <p className="text-gray-600 text-lg mb-4">{selectedLink.url}</p>
+          <h2 className="text-2xl font-semibold text-gray-700 mb-2">Parent</h2>
+          <p className="text-gray-600 text-lg">{selectedLink.parent}</p>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default Home;

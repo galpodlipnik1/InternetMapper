@@ -69,7 +69,7 @@ export const formatLinks = (links, baseUrl) => {
 }
 
 export const changeLinks = (linksArr, baseUrl) => {
-  const seen = []; // Declare seen outside of the map function
+  const seen = []; 
   const changed = linksArr.map(linkObj => {
     const links = linkObj.links;
     const url = linkObj.url;
@@ -89,3 +89,55 @@ export const changeLinks = (linksArr, baseUrl) => {
 
   return changed;
 };
+
+export const formatResponse = (linksArr) => {
+  
+  let groupedLinks = {};
+
+  linksArr.forEach(link => {
+    
+    let parentUrl = link.parent;
+
+    if (!groupedLinks[parentUrl]) {
+      groupedLinks[parentUrl] = [];
+    }
+
+    groupedLinks[parentUrl].push({
+      url: link.url,
+      depth: link.crawlDepth,
+      color: getColor(link.crawlDepth),
+      size: getSize(link.crawlDepth),
+      lineWidth: getLineWidth(link.crawlDepth),
+      links: link.links,
+      parent: parentUrl // add parent field
+    });
+  });
+
+  let formattedResponse = Object.keys(groupedLinks).map(parentUrl => {
+    return {
+      parent: parentUrl,
+      links: groupedLinks[parentUrl]
+    };
+  });
+
+  return formattedResponse;
+};
+
+
+const getColor = (depth) => {
+  const seededRandom = (seed) => Math.sin(seed) * 10000 - Math.floor(Math.sin(seed) * 10000);
+
+  const r = Math.floor(seededRandom(depth + 1) * 256);
+  const g = Math.floor(seededRandom(depth + 2) * 256);
+  const b = Math.floor(seededRandom(depth + 3) * 256);
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+const getSize = (depth) => {
+  return 1 / Math.pow(2, depth - 1);
+}
+
+const getLineWidth = (depth) => {
+  return 3 / Math.pow(2, depth);
+}

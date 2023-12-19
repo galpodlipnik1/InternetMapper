@@ -4,7 +4,7 @@ export const getLinks = async () => {
   try {
     const { data } = await api.getLinks();
 
-    return data.links;
+    return data.map;
   } catch (error: any) {
     console.log(error.message);
   }
