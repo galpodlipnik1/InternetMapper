@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, FC } from 'react';
-import { getLinks } from '../actions/links';
+import { createLink, getLinks } from '../actions/links';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -22,6 +22,7 @@ const Home: FC = () => {
   const [knownMap, setKnownMap] = useState<KnownMapType>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedLink, setSelectedLink] = useState<{url:string, parent:string} | null>(null);
+  const [addLink, setAddLink] = useState<{url:string, depth:number} | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const spheresRef = useRef<THREE.Mesh[]>([]);
   const raycaster = new THREE.Raycaster();
@@ -168,21 +169,58 @@ const Home: FC = () => {
   return isLoading ? (
     <div>Loading...</div>
   ) : (
-    <div ref={containerRef}>
-      {selectedLink && (
-        <div className="fixed top-2 right-2 bg-white p-6 rounded-lg shadow-xl">
-          <button 
-            onClick={() => setSelectedLink(null)} 
-            className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
-          >
-            X
-          </button>
-          <h2 className="text-2xl font-semibold text-gray-700 mb-2">URL</h2>
-          <p className="text-gray-600 text-lg mb-4">{selectedLink.url}</p>
-          <h2 className="text-2xl font-semibold text-gray-700 mb-2">Parent</h2>
-          <p className="text-gray-600 text-lg">{selectedLink.parent}</p>
-        </div>
-      )}
+    <div className="flex">
+      <div className="fixed top-2 left-2 bg-white p-6 rounded-lg shadow-xl flex flex-col space-y-4">
+        <input 
+          className="border-2 border-gray-300 bg-white px-5 h-10 w-60 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+          type="text" 
+          name="search" 
+          placeholder="Add a website(e.g. google.com)"
+          onChange={(e) => setAddLink((prev) => ({
+            url: e.target.value,
+            depth: prev ? prev.depth : 0,
+          }))}
+        />
+        <input 
+          className="border-2 border-gray-300 bg-white h-10 px-5 pr-16 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+          type="number" 
+          name="search"
+          min="1"
+          max="4"
+          placeholder="Add the depth"
+          onChange={(e) => setAddLink((prev) => ({
+            url: prev ? prev.url : '',
+            depth: parseInt(e.target.value),
+          }))}
+        />
+        <button
+          onClick={() => {
+            createLink(addLink?.url ?? '', addLink?.depth ?? 0)
+            setAddLink(null);
+            alert('Link added successfully!. can take a few minutes to update');
+          }}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200 ease-in-out transform hover:-translate-y-1 hover:scale-110"
+          type="button"
+        >
+          Add
+        </button>
+      </div>
+      <div ref={containerRef}>
+        {selectedLink && (
+          <div className="fixed top-2 right-2 bg-white p-6 rounded-lg shadow-xl">
+            <button 
+              onClick={() => setSelectedLink(null)} 
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+            >
+              X
+            </button>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-2">URL</h2>
+            <p className="text-gray-600 text-lg mb-4">{selectedLink.url}</p>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-2">Parent</h2>
+            <p className="text-gray-600 text-lg">{selectedLink.parent}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

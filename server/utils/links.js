@@ -6,6 +6,8 @@ const agent = new https.Agent({
   rejectUnauthorized: false
 });
 
+agent.setMaxListeners(50);
+
 export const crawlLinks = async (url, baseUrl, depth, visited, parent, originalDepth = depth) => {
   if (visited.has(url) || depth === 0) {
     return [];

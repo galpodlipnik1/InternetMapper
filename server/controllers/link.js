@@ -22,10 +22,17 @@ export const getLinks = async (req, res) => {
           crawlDepth: link.crawlDepth
         });
         await newLink.save();
+      } else {
+        existingLink.links = link.links;
+        existingLink.parent = link.parent;
+        existingLink.crawlTime = new Date();
+        existingLink.crawlDepth = link.crawlDepth;
+        await existingLink.save();
       }
     }
 
-    res.status(200).json({ message: `${linkLength} links crawled` });
+    console.log(`${linkLength} links crawled from ${baseUrl}`);
+    res.status(200).json({ message: `${linkLength} links crawled from ${baseUrl}` });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
@@ -89,7 +96,7 @@ export const test = async (req, res) => {
   try {
     randomWebsites.forEach(async (website) => {
       const add = await axios.get(`http://localhost:5001/links/link/?url=${website}/&depth=3`);
-      console.log(add.data.message + ' for ' + website);
+      console.log(add.data.message);
     });
 
     res.status(200).json({ message: 'WORKING...' });

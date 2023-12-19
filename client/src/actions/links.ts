@@ -9,3 +9,13 @@ export const getLinks = async () => {
     console.log(error.message);
   }
 };
+
+export const createLink = async (url: string, depth: number) => {
+  try {
+    const { data } = await api.addLink(url, depth);
+
+    return data;
+  } catch (error: any) {
+    console.log(error.message);
+  }
+};
